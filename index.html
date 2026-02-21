@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unifound - College Dashboard</title>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+    <style>
+        :root { 
+            --primary: #6366f1; 
+            --bg: #f8fafc; 
+            --text: #1e293b; 
+            --white: #ffffff;
+        }
+        
+        body { margin: 0; font-family: 'Inter', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); }
+
+        /* --- AUTH SCREEN (OTP/Google Logic Safe) --- */
+        #login-page { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+        .auth-card { background: white; padding: 35px; border-radius: 24px; width: 100%; max-width: 400px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); text-align: center; }
+        .styled-input { width: 100%; padding: 12px 16px; margin: 10px 0; border: 1px solid #e2e8f0; border-radius: 12px; box-sizing: border-box; font-size: 15px; outline: none; transition: 0.2s; }
+        .styled-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1); }
+
+        /* --- LAYOUT STRUCTURE --- */
+        .main-wrapper { display: flex; flex-direction: column; min-height: 100vh; }
+        
+        /* Desktop Sidebar (image_5bb8aa.png style) */
+        .sidebar { width: 260px; background: white; border-right: 1px solid #e2e8f0; padding: 30px 20px; position: fixed; height: 100vh; display: none; }
+        .content-area { flex: 1; margin-left: 0; transition: 0.3s; padding-bottom: 90px; }
+
+        /* Navigation */
+        .top-nav { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(10px); padding: 12px 25px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; position: sticky; top: 0; z-index: 1000; }
+        .search-box { width: 60%; max-width: 450px; padding: 10px 20px; border-radius: 12px; border: 1px solid #e2e8f0; background: #f1f5f9; outline: none; font-size: 14px; }
+
+        /* Mobile Bottom Nav (image_5c0f3d.png style) */
+        .mobile-bottom-nav { 
+            position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+            background: var(--white); width: 90%; max-width: 400px; height: 65px;
+            border-radius: 35px; box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+            display: flex; justify-content: space-around; align-items: center; z-index: 999;
+        }
+        .nav-btn { background: none; border: none; font-size: 22px; cursor: pointer; padding: 10px; border-radius: 50%; transition: 0.2s; }
+        .nav-btn.active { color: var(--primary); background: #f1f5f9; }
+        .fab-btn { background: var(--primary); color: white; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-top: -35px; border: 5px solid var(--bg); font-size: 24px; box-shadow: 0 4px 10px rgba(99, 102, 241, 0.4); }
+
+        /* Grid & Cards */
+        .items-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; padding: 25px; }
+        .item-card { background: white; border-radius: 18px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px rgba(0,0,0,0.02); transition: 0.3s; }
+        .item-card:hover { transform: translateY(-5px); box-shadow: 0 12px 20px rgba(0,0,0,0.05); }
+        .card-img { width: 100%; height: 180px; object-fit: cover; background: #f8fafc; }
+        .card-body { padding: 18px; }
+
+        /* Buttons & Badges */
+        .btn-primary { background: var(--primary); color: white; border: none; padding: 14px; border-radius: 14px; cursor: pointer; font-weight: 700; width: 100%; transition: 0.2s; }
+        .btn-primary:hover { background: #4f46e5; }
+        .badge { padding: 5px 12px; border-radius: 8px; font-size: 11px; font-weight: 800; text-transform: uppercase; margin-bottom: 10px; display: inline-block; }
+        .badge-lost { background: #fee2e2; color: #ef4444; }
+        .badge-found { background: #dcfce7; color: #10b981; }
+
+        /* Modal styling (image_51a99e.png style) */
+        .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); z-index: 10000; align-items: center; justify-content: center; padding: 20px; }
+        .modal-content { background: white; padding: 30px; border-radius: 28px; width: 100%; max-width: 440px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); }
+
+        @media (min-width: 768px) {
+            .sidebar { display: block; }
+            .content-area { margin-left: 260px; }
+            .mobile-bottom-nav { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="login-page">
+        <div class="auth-card">
+            <h1 style="color:var(--primary); margin:0 0 10px; font-weight:900;">Unifound</h1>
+            <p id="form-title" style="color:#64748b; margin-bottom:25px;">Helping students find their belongings</p>
+            
+            <div id="name-group" style="display: none;">
+                <input type="text" id="user-name" class="styled-input" placeholder="Your Full Name">
+            </div>
+            
+            <div id="email-section">
+                <input type="email" id="user-email" class="styled-input" placeholder="College Email">
+                <button class="btn-primary" id="main-btn" onclick="sendOTP()">Send OTP</button>
+            </div>
+
+            <div id="otp-section" style="display: none;">
+                <input type="text" id="otp-input" class="styled-input" placeholder="000000" maxlength="6" style="text-align:center; letter-spacing:10px; font-size:24px; font-weight:bold;">
+                <button class="btn-primary" onclick="verifyOTP()">Verify & Login</button>
+            </div>
+
+            <div style="margin:25px 0; display:flex; align-items:center; gap:10px; color:#cbd5e1; font-size:12px; font-weight:bold;">
+                <hr style="flex:1; border:0; border-top:1px solid #e2e8f0;"> OR <hr style="flex:1; border:0; border-top:1px solid #e2e8f0;">
+            </div>
+
+            <button onclick="loginWithGoogle()" style="width:100%; padding:12px; border-radius:14px; border:1px solid #e2e8f0; background:white; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:12px; font-weight:600; color:#475569;">
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="20"> Continue with Google
+            </button>
+          <p style="font-size:14px; margin-top:20px; color:#64748b;" id="toggle-container">
+    New here? <a href="#" onclick="toggleMode()" style="color:var(--primary); text-decoration:none; font-weight:700;">Create account</a>
+</p>        </div>
+    </div>
+
+    <div id="dashboard-page" style="display: none;" class="main-wrapper">
+    <main class="content-area" style="margin-left: 0;"> <nav class="top-nav" style="justify-content: space-between; padding: 15px 25px;">
+            <h1 style="color:var(--primary); font-size:22px; font-weight:900; margin:0;">Unifound</h1>
+            
+            <div class="search-container" style="flex: 1; margin: 0 20px;">
+                <input type="text" class="search-box" id="search-bar" placeholder="Search items..." onkeyup="searchItems()" style="width: 100%;">
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <button onclick="document.getElementById('itemModal').style.display='flex'" style="background:var(--primary); color:white; border:none; width:35px; height:35px; border-radius:10px; cursor:pointer; font-weight:bold; font-size:20px;">+</button>
+                
+                <div style="position: relative;">
+    <div onclick="openProfile()" style="cursor:pointer; width:40px; height:40px; border-radius:50%; background:#6366f1; color:white; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:18px;" id="user-avatar-main">
+        M
+    </div>
+
+    <div id="profileModal" style="display:none; position:fixed; top:70px; right:20px; background:white; width:320px; border-radius:20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); border: 1px solid #eee; z-index: 9999; padding: 20px;">
+        
+        <span onclick="document.getElementById('profileModal').style.display='none'" style="position:absolute; top:10px; right:15px; cursor:pointer; color:#cbd5e1; font-size:20px;">&times;</span>
+
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:15px; border-bottom:1px solid #f8fafc; padding-bottom:15px;">
+            <div style="width:45px; height:45px; background:#6366f1; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:18px;" id="profile-avatar">M</div>
+            <div style="text-align:left;">
+                <h4 id="display-user-name" style="margin:0; font-size:16px; color:#1e293b;">User Name</h4>
+                <p id="user-post-count" style="margin:0; font-size:12px; color:#64748b;">0 items posted</p>
+            </div>
+        </div>
+
+        <h5 style="margin:0 0 10px 0; color:#475569; text-align:left;">My Reported Items 🔍</h5>
+        
+        <div id="user-posts-list" style="max-height:200px; overflow-y:auto; display:flex; flex-direction:column; gap:8px;">
+            </div>
+
+        <p id="no-posts-msg" style="text-align:center; color:#94a3b8; margin:15px 0; font-size:13px; display:none;">No posts found!</p>
+        
+        <button onclick="logout()" style="width:100%; margin-top:15px; padding:10px; border:none; background:#f1f5f9; border-radius:10px; color:#ef4444; font-weight:600; cursor:pointer;">Logout</button>
+    </div>
+</div>
+            
+            </div>
+        </nav>
+
+        <div style="padding: 20px;">
+            <div id="items-list" class="items-grid"></div>
+        </div>
+    </main>
+</div>
+
+<div id="itemModal" class="modal">
+    <div class="modal-content">
+        <h3 style="margin:0 0 20px 0;">Report New Item</h3>
+        
+        <label>Status</label>
+        <select id="post-type" class="styled-input">
+            <option value="lost">Lost</option>
+            <option value="found">Found</option>
+        </select>
+        
+        <input type="text" id="post-item-name" class="styled-input" placeholder="Item Name">
+        <input type="file" id="post-image" class="styled-input" accept="image/*">
+        
+        <input type="number" id="post-contact" class="styled-input" placeholder="WhatsApp / Contact Number">
+        
+        <textarea id="post-desc" class="styled-input" placeholder="Description (Where and When?)" style="height:80px;"></textarea>
+        
+        <button class="btn-primary" onclick="saveItem()">Post to Dashboard</button>
+        <button onclick="document.getElementById('itemModal').style.display='none'" style="width:100%; margin-top:10px; background:none; border:none; color:#94a3b8; cursor:pointer;">Cancel</button>
+    </div>
+</div>
+
+    <div id="itemModal" class="modal">
+        <div class="modal-content">
+            <h3 style="margin:0 0 20px 0; font-size:22px; font-weight:800;">Report New Item</h3>
+            
+            <label style="font-size:13px; font-weight:700; color:#475569;">Status</label>
+            <select id="post-type" class="styled-input">
+                <option value="lost">Lost</option>
+                <option value="found">Found</option>
+            </select>
+            
+            <label style="font-size:13px; font-weight:700; color:#475569;">Item Name</label>
+            <input type="text" id="post-item-name" class="styled-input" placeholder="e.g. Black Backpack">
+            
+            <label style="font-size:13px; font-weight:700; color:#475569;">Upload Image</label>
+            <input type="file" id="post-image" class="styled-input" accept="image/*">
+            
+            <label style="font-size:13px; font-weight:700; color:#475569;">Where and When?</label>
+            <textarea id="post-desc" class="styled-input" placeholder="e.g. Near Library at 2 PM" style="height:90px; resize:none;"></textarea>
+            
+            <button class="btn-primary" id="save-btn" onclick="saveItem()" style="margin-top:10px;">Post to Dashboard</button>
+            <button onclick="document.getElementById('itemModal').style.display='none'" style="width:100%; margin-top:15px; background:none; border:none; color:#94a3b8; font-weight:600; cursor:pointer;">Cancel</button>
+        </div>
+    </div>
+    
+    <script type="module" src="script.js"></script>
+</body>
+</html>
