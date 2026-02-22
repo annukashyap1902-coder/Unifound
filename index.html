@@ -162,7 +162,10 @@
         <input type="text" id="post-item-name" class="styled-input" placeholder="Item Name">
         <input type="file" id="post-image" class="styled-input" accept="image/*">
         
-        <input type="number" id="post-contact" class="styled-input" placeholder="WhatsApp / Contact Number">
+        <input type="number" id="post-contact" placeholder="Enter 10 digit number" 
+       class="form-control" 
+       style="width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px;"
+       oninput="if(this.value.length > 10) this.value = this.value.slice(0, 10);">
         
         <textarea id="post-desc" class="styled-input" placeholder="Description (Where and When?)" style="height:80px;"></textarea>
         

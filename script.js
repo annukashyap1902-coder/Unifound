@@ -43,7 +43,7 @@ window.logout = () => {
 // --- OTP LOGIC ---
 window.sendOTP = async () => {
     const email = document.getElementById('user-email').value.trim();
-    if(!email) return alert("Pehle email address bhariye!");
+    if(!email) return alert("Enter Your Enail Address!");
     try {
         generatedOTP = Math.floor(100000 + Math.random() * 900000);
         emailjs.send("service_q76f9p7", "template_gjbpbjc", {
@@ -58,17 +58,46 @@ window.sendOTP = async () => {
         });
     } catch (e) { alert("Error sending OTP!"); }
 };
-
+// --- OTP VERIFY & LOGIN ---
 window.verifyOTP = async () => {
-    const enteredOTP = document.getElementById('otp-input').value;
+    const userOTP = document.getElementById('otp-input').value;
     const email = document.getElementById('user-email').value.trim();
     const name = document.getElementById('user-name').value.trim();
-    if(enteredOTP == generatedOTP) {
-        if (document.getElementById('name-group').style.display === "block") {
-            await setDoc(doc(db, "users", email), { fullName: name || "User", email: email, date: new Date() });
+    const nameGroup = document.getElementById('name-group');
+
+    if (userOTP == generatedOTP) {
+        try {
+            // 1. Firebase mein is email ka data check karein
+            const userRef = doc(db, "users", email);
+            const userSnap = await getDoc(userRef);
+            const isSignUpMode = (nameGroup.style.display === "block");
+
+            // 2. Agar Naya User hai (Sign Up), toh database mein entry karo
+            if (isSignUpMode && !userSnap.exists()) {
+                await setDoc(userRef, {
+                    name: name,
+                    email: email,
+                    createdAt: serverTimestamp()
+                });
+            }
+
+            // --- SABSE ZAROORI PART ---
+            // Yahan hum dummy authentication state simulate karte hain 
+            // Kyunki aap custom OTP use kar rahi hain, humein user info save karni hogi
+            localStorage.setItem('loggedInUser', JSON.stringify({
+                email: email,
+                name: userSnap.exists() ? userSnap.data().name : name,
+                uid: email.replace(/[^a-zA-Z0-9]/g, "") // Unique ID banayi email se
+            }));
+
+            alert("Login Successful!");
+            showDashboard(); // Dashboard par bhejo
+        } catch (e) {
+            alert("Login Error: " + e.message);
         }
-        showDashboard();
-    } else { alert("Invalid OTP!"); }
+    } else {
+        alert("Enter Correct OTP !");
+    }
 };
 
 window.loginWithGoogle = () => {
@@ -92,33 +121,62 @@ window.saveItem = async () => {
         const contact = document.getElementById('post-contact').value.trim(); 
         const fileInput = document.getElementById('post-image');
         const file = fileInput.files[0];
-        const currentUser = auth.currentUser;
+
+        // --- ADDED: OTP user check taaki alert na aaye ---
+        const localUser = JSON.parse(localStorage.getItem('loggedInUser'));
+        const currentUser = auth.currentUser || localUser;
 
         if (!currentUser) return alert("Please login first!");
-        if (!name || !file) return alert("Item Name aur Photo zaroori hai!");
-
+        if (!name || !file) return alert("Please Enter Full Details !");
+if (contact.length !== 10) {
+    alert("Enter Correct Contact Number !");
+    return;
+}
         const reader = new FileReader();
         reader.onload = async (e) => {
-            try {
-                await addDoc(collection(db, "items"), {
-                    type: type,
-                    itemName: name,
-                    description: desc,
-                    contactNumber: contact, 
-                    image: e.target.result,
-                    userId: currentUser.uid,
-                    userEmail: currentUser.email,
-                    timestamp: serverTimestamp()
-                });
-                alert("Post Successful!");
-                document.getElementById('itemModal').style.display = 'none';
+            // --- ADDED: Image Compression taaki 1MB wala error na aaye ---
+            const img = new Image();
+            img.src = e.target.result;
+            img.onload = async () => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
                 
-                // Form reset
-                document.getElementById('post-item-name').value = "";
-                document.getElementById('post-desc').value = "";
-                document.getElementById('post-contact').value = "";
-                fileInput.value = "";
-            } catch (error) { alert("Database Error: " + error.message); }
+                // Image size chota karna (Max 600px width)
+                const scaleFactor = 600 / img.width;
+                canvas.width = 600;
+                canvas.height = img.height * scaleFactor;
+                
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                
+                // Quality kam karke Base64 banana
+                const compressedBase64 = canvas.toDataURL('image/jpeg', 0.6);
+
+                try {
+                    await addDoc(collection(db, "items"), {
+                        type: type,
+                        itemName: name,
+                        description: desc,
+                        contactNumber: contact, 
+                        image: compressedBase64, // Ab ye 1MB se choti hogi
+                        // --- ADDED: OTP user ke liye ID handle karna ---
+                        userId: currentUser.uid || currentUser.email.replace(/[^a-zA-Z0-9]/g, ""),
+                        userEmail: currentUser.email,
+                        timestamp: serverTimestamp()
+                    });
+
+                    alert("Post Successful!");
+                    document.getElementById('itemModal').style.display = 'none';
+                    
+                    // Form reset
+                    document.getElementById('post-item-name').value = "";
+                    document.getElementById('post-desc').value = "";
+                    document.getElementById('post-contact').value = "";
+                    fileInput.value = "";
+                } catch (error) { 
+                    // Ye wahi error handle karega jo image badi hone par aata hai
+                    alert("Database Error: " + error.message); 
+                }
+            };
         };
         reader.readAsDataURL(file);
     } catch (err) { alert("System Error!"); }
@@ -156,10 +214,13 @@ function loadItems() {
 window.openProfile = () => {
     const modal = document.getElementById('profileModal');
     const listDiv = document.getElementById('user-posts-list');
-    const currentUser = auth.currentUser;
+
+    // --- ADDED: Local Storage check for OTP users ---
+    const localUser = JSON.parse(localStorage.getItem('loggedInUser'));
+    const currentUser = auth.currentUser || localUser; 
 
     if (!currentUser) {
-        alert("Pehle login karein!");
+        alert("Please Login First!");
         return;
     }
 
@@ -169,7 +230,8 @@ window.openProfile = () => {
         
         // User ka naam set karna
         const nameDisplay = document.getElementById('display-user-name');
-        if(nameDisplay) nameDisplay.innerText = currentUser.displayName || currentUser.email;
+        // --- ADDED: Support for OTP name field ---
+        if(nameDisplay) nameDisplay.innerText = currentUser.displayName || currentUser.name || currentUser.email;
 
         // Database se sirf is user ki posts lana
         const q = query(collection(db, "items"), orderBy("timestamp", "desc"));
@@ -180,8 +242,11 @@ window.openProfile = () => {
             snapshot.forEach((docSnap) => {
                 const data = docSnap.data();
                 
+                // --- ADDED: Support for both UID and Email filtering ---
+                const currentId = currentUser.uid || (currentUser.email ? currentUser.email.replace(/[^a-zA-Z0-9]/g, "") : null);
+                
                 // Filter: Sirf apni posts dikhao
-                if (data.userId === currentUser.uid) {
+                if (data.userId === currentId || data.userEmail === currentUser.email) {
                     count++;
                     listDiv.innerHTML += `
                     <div style="display:flex; align-items:center; justify-content:space-between; background:#fff; padding:12px; border-radius:12px; border:1px solid #eee; margin-bottom:10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
@@ -202,7 +267,7 @@ window.openProfile = () => {
             if(countDisplay) countDisplay.innerText = `${count} items reported`;
             
             if(count === 0) {
-                listDiv.innerHTML = `<p style="color:#999; font-size:13px; margin-top:20px;">Aapne abhi tak koi post nahi ki hai.</p>`;
+                listDiv.innerHTML = `<p style="color:#999; font-size:13px; margin-top:20px;">You haven't posted Anything yet</p>`;
             }
         });
     } else {
@@ -224,14 +289,70 @@ window.deletePost = async (id) => {
     }
 };
 
+// --- TOGGLE MODE (UI Fix for "Back to login") ---
 window.toggleMode = () => {
     const nameGroup = document.getElementById('name-group');
+    const title = document.getElementById('form-title');
+    const btn = document.getElementById('main-btn');
+    const toggleContainer = document.getElementById('toggle-container');
+
     const isLogin = nameGroup.style.display === "none";
-    nameGroup.style.display = isLogin ? "block" : "none";
-    document.getElementById('form-title').innerText = isLogin ? "Create an account" : "Helping students find belongings";
-    document.getElementById('main-btn').innerText = isLogin ? "Sign Up with OTP" : "Send OTP Code";
+
+    if (isLogin) {
+        // SIGN UP MODE
+        nameGroup.style.display = "block";
+        title.innerText = "Create an account";
+        btn.innerText = "Sign Up with OTP";
+        toggleContainer.innerHTML = `Already have an account? <a href="#" onclick="toggleMode()" style="color:var(--primary); text-decoration:none; font-weight:700;">Back to login</a>`;
+    } else {
+        // LOGIN MODE
+        nameGroup.style.display = "none";
+        title.innerText = "Helping students find their belongings";
+        btn.innerText = "Send OTP Code";
+        toggleContainer.innerHTML = `New here? <a href="#" onclick="toggleMode()" style="color:var(--primary); text-decoration:none; font-weight:700;">Create account</a>`;
+    }
 };
 
+// --- SEND OTP (Security Fix: Checking if user exists) ---
+window.sendOTP = async () => {
+    const email = document.getElementById('user-email').value.trim();
+    const nameGroup = document.getElementById('name-group');
+    
+    if(!email) return alert("Please Enter your Email Address !");
+
+    try {
+        // Database mein check karo ki user pehle se hai ya nahi
+        const userRef = doc(db, "users", email);
+        const userSnap = await getDoc(userRef);
+        const isSignUpMode = (nameGroup.style.display === "block");
+
+        // SECURITY CHECK:
+        if (!isSignUpMode && !userSnap.exists()) {
+            return alert("Cann't find account,Please Signup First !");
+        }
+        
+        if (isSignUpMode && userSnap.exists()) {
+            return alert("This Email is already registered,please Login First");
+        }
+
+        // Agar sab sahi hai toh OTP bhejo
+        generatedOTP = Math.floor(100000 + Math.random() * 900000);
+        
+        emailjs.send("service_q76f9p7", "template_gjbpbjc", {
+            to_email: email,
+            otp_code: generatedOTP,
+            time: new Date().toLocaleTimeString() 
+        }, "IBEU3s9Zei5rD5m7Z")
+        .then(() => {
+            alert("OTP sent to " + email);
+            document.getElementById('email-section').style.display = 'none';
+            document.getElementById('otp-section').style.display = 'block';
+        });
+    } catch (e) { 
+        console.error(e);
+        alert("System Error: Firebase connectivity check karein."); 
+    }
+};
 window.searchItems = () => {
     const queryStr = document.getElementById('search-bar').value.toLowerCase();
     const cards = document.querySelectorAll('.item-card');
